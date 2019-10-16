@@ -174,6 +174,23 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   if (get_next_tick_to_awake() <= ticks) /* If ticks pass next_tick_to_awake */
     thread_awake(ticks);	   /* execute thread_awake */
+
+  if (thread_mlfqs)
+  {
+    /* Update recent_cpu per timer_interrupt */
+    mlfqs_increase_recent_cpu ();
+    /* On every TIMER_FREQ = 100, recalculate every threads's recent_cpu
+       and load_avg */
+    if (ticks % TIMER_FREQ == 0)
+    {
+      mlfqs_recalculate ();
+    }
+    else if (ticks % 4 == 0)
+    {
+      mlfqs_calculate_priority(thread_current ());
+    }
+  }
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

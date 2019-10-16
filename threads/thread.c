@@ -33,6 +33,9 @@ static struct list sleeping_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* Ready queues for mlfqs. Each queue has a priority between 0 to 63 */
+static struct list mlfqs_ready_queue[64];
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -105,12 +108,19 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleeping_list);
-  /* Set up a thread structure for the running thread. */
+
+  /* mlfqs ready queue initialize */
+  if (thread_mlfqs){
+    for (int i = 0; i < 64; i++){
+      list_init (&mlfqs_ready_queue[i]);
+    }
+  }
+    /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-}
+ }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -254,8 +264,14 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+
+  if (thread_mlfqs){
+    list_push_back(&mlfqs_ready_queue[t->priority], &t->elem);
+  }
   /* list_push_back --> list_insert_ordered by priority */
-  list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, 0);
+  else {
+    list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, 0);
+  }
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -319,15 +335,20 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur;
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
+  cur = thread_current ();
   /* list_push_back --> list_insert_ordered by priority */
-  if (cur != idle_thread)
-    list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, 0); 
+  if (cur != idle_thread){
+    if (thread_mlfqs)
+      list_push_back(&mlfqs_ready_queue[cur->priority], &cur->elem);
+    else
+      list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, 0); 
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -382,11 +403,17 @@ thread_set_nice (int nice UNUSED)
   /* Not yet implemented. */
   enum intr_level old_level = intr_disable ();
 
-  thread_current ()->nice = nice;
-  mlfqs_calculate_priority(thread_current ());
+  struct thread *cur = thread_current ();
+  cur->nice = nice;
+  mlfqs_calculate_priority(cur);
 
-  thread_test_priority_cur_and_ready ();
-
+//  thread_test_priority_cur_and_ready ();
+  for (int i = 63; i >= cur->priority; i--){
+    if (!list_empty(&mlfqs_ready_queue[i]) && i != cur->priority){
+      thread_yield ();
+      break;
+    }
+  }
   intr_set_level (old_level);
 }
 
@@ -533,6 +560,21 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+  if (thread_mlfqs)
+  {
+    struct thread *cur = idle_thread;
+    for (int i = 63; i>=0; i--)
+    {
+      if (!list_empty(&mlfqs_ready_queue[i]))
+      {
+	cur = list_entry (list_pop_front (&mlfqs_ready_queue[i]), struct thread, elem);
+	break;
+      }
+    }
+    return cur;
+  }
+
+
   if (list_empty (&ready_list))
     return idle_thread;
   else
@@ -884,32 +926,37 @@ mlfqs_calculate_load_avg (size_t ready_threads)
 void
 mlfqs_recalculate(void)
 {
+  struct thread *cur;
+  struct list_elem *e;
+
   ASSERT(thread_mlfqs);
   ASSERT(intr_context());
  
-  size_t ready_threads = list_size(&ready_list);
+  size_t ready_threads = 0;
+
+  e = list_begin(&all_list);
+  for (; e != list_end(&all_list); e = list_next(e))
+  {
+    cur = list_entry(e, struct thread, allelem);
+
+    if(cur == idle_thread)
+      continue;
+    /* Update recent_cpu and priority */
+    mlfqs_calculate_priority(cur);
+    mlfqs_calculate_recent_cpu(cur);
+
+    /* ready_threads initialization */
+    if (cur->status == THREAD_READY)
+      ready_threads++;
+  }
 
 /* ready_threads include running thread */
   if(thread_current() != idle_thread)
   {
     ready_threads++;
   }
-
+  /* Update load_avg */
   mlfqs_calculate_load_avg(ready_threads);
-
-  struct thread *cur;
-  struct list_elem *e = list_begin(&all_list);
-
-  for (; e != list_end(&all_list); e = list_next(e))
-  {
-    cur = list_entry(e, struct thread, allelem);
-
-    if(cur != idle_thread)
-    {
-      mlfqs_calculate_priority(cur);
-      mlfqs_calculate_recent_cpu(cur);
-    }
-  }
 }
 
 

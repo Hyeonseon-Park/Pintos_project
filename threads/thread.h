@@ -163,4 +163,12 @@ void donate_priority (struct lock *);
 void recover_donate_priority (struct lock *);
 bool lock_priority_higher_sort (const struct list_elem *, const struct list_elem *, void *);
 
+/* Added for project 1 - mlfqs */
+void mlfqs_calculate_priority (struct thread *t);
+void mlfqs_calculate_recent_cpu (struct thread *t);
+void mlfqs_calculate_load_avg (size_t);
+void mlfqs_increase_recent_cpu (void);
+void mlfqs_recalculate (void);
+
+
 #endif /* threads/thread.h */

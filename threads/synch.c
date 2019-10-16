@@ -66,17 +66,29 @@ sema_down (struct semaphore *sema)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  while (sema->value == 0) 
+/*
+  if (thread_mlfqs)
+  {
+    while(sema->value == 0)
     {
-      /* list_push_back --> list_insert_ordered by priority */
-//      list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered (&sema->waiters, &thread_current ()->elem,
+      list_push_back (&sema->waiters, &thread_current ()->elem);
+      thread_block();
+    }
+  }*/
+//  else
+//  {
+    while (sema->value == 0) 
+      {
+        /* list_push_back --> list_insert_ordered by priority */
+//        list_push_back (&sema->waiters, &thread_current ()->elem);
+        list_insert_ordered (&sema->waiters, &thread_current ()->elem,
 			   thread_compare_priority, 0);
 
-      list_sort(&thread_current()->lock_list, lock_priority_higher_sort, NULL);
+        list_sort(&thread_current()->lock_list, lock_priority_higher_sort, NULL);
 
-      thread_block ();
-    }
+        thread_block ();
+      }
+//   }
   sema->value--;
   intr_set_level (old_level);
 }
@@ -271,6 +283,7 @@ lock_release (struct lock *lock)
     return;
   }
 
+//  enum intr_level old_level = intr_disable(); //added
   cur = thread_current ();
 
   list_remove (&lock->elem);
