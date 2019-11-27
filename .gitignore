@@ -3,4 +3,7 @@ cscope.out
 TAGS
 tags
 *.a
+*.o
+*.log
+*.exe
 build/
