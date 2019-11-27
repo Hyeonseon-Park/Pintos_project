@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -50,8 +51,12 @@ process_execute (const char *file_name)
   strlcpy (cmdline_copy, file_name, PGSIZE);
   token = strtok_r(cmdline_copy, " ", &save_ptr);
 
+  if (filesys_open(token) == NULL)
+    return -1;
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy); //file_name --> token
+  sema_down (&thread_current()->load_lock);
 
   if (tid == TID_ERROR){
     palloc_free_page (fn_copy);
@@ -78,8 +83,9 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
+  sema_up(&thread_current ()->parent->load_lock);
   if (!success){
-    thread_exit ();
+    exit(-1);
   }
 
   /* Start the user process by simulating a return from an
@@ -102,9 +108,25 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED)
+process_wait (tid_t child_tid)
 {
-  timer_sleep(10);
+//  timer_sleep(10);
+  struct list_elem *e;
+  struct thread *t = NULL;
+  int exit_status;
+
+  for (e = list_begin(&(thread_current()->child)); e != list_end(&(thread_current()->child)); e = list_next(e))
+  {
+    t = list_entry(e, struct thread, child_elem);
+    if (child_tid == t->tid)
+    {
+      sema_down(&(t->child_lock));
+      exit_status = t->exit_status;
+      list_remove(&(t->child_elem));
+      sema_up(&(t->mem_lock));
+      return exit_status; //exit_status of child process
+    }
+  }
   return -1;
 }
 
@@ -131,6 +153,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  sema_up(&(cur->child_lock));
+  sema_down(&(cur->mem_lock));
 }
 
 /* Sets up the CPU for running user code in the current

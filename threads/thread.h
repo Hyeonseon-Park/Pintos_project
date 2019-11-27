@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "fixed_point.h"
+#include "threads/synch.h" //added for project 2
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -106,6 +107,15 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    /* added for project 2 */
+    struct semaphore child_lock;
+    struct semaphore mem_lock; // waiting child for preventing memory leak
+    struct semaphore load_lock; // prevent child's dead before parent wait
+    struct thread *parent;
+    struct list child;
+    struct list_elem child_elem;
+    int exit_status;
+    struct file* fd[128]; // file descriptor
 #endif
 
     /* Owned by thread.c. */

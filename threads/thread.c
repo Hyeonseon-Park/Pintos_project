@@ -229,7 +229,7 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   /* Test if the priority is greater than running thread */
-  // thread_test_priority_cur_and_ready (); //erase for project 2 test
+  thread_test_priority_cur_and_ready (); //erase for project 2 test
 
   return tid;
 }
@@ -546,6 +546,20 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+#ifdef USERPROG
+  for(int i=0; i < 128; i++)
+  {
+    t->fd[i] = NULL;
+  }
+  t->parent = running_thread();
+  sema_init(&(t->child_lock), 0);
+  sema_init(&(t->mem_lock), 0); // for preventing memory leak of child
+  sema_init(&(t->load_lock), 0);
+  list_init(&(t->child));
+  list_push_back(&(running_thread()->child), &(t->child_elem));
+#endif
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
